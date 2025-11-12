@@ -260,10 +260,174 @@ Let op: de exacte type van `e` verschilt per event (bijv. `MouseButtonEventArgs`
 
 ---
 
-## 10. Samenvatting
+---
 
-- **WPF** scheidt interface (XAML) en logica (C#) via de **code-behind**.  
-- **Panels** bepalen de layout; gebruik bij voorkeur `Grid`, `StackPanel` of `WrapPanel`.  
-- **Properties** zoals `Margin`, `Alignment` en `Name` zijn essentieel voor positionering en interactie.  
-- **Events** verbinden gebruikersacties met code.  
-- **MessageBox** is een handig hulpmiddel voor meldingen of eenvoudige gebruikersinteractie.
+## 11. Hergebruik van event handlers
+
+Je kunt **één event handler aan meerdere componenten koppelen**.  
+In het voorbeeld met vijf knoppen kun je alle knoppen hetzelfde `Click`-event laten gebruiken:
+
+```xml
+<Button Name="btnLeft" Click="Button_Click" Content="Links"/>
+<Button Name="btnCenter" Click="Button_Click" Content="Centrum"/>
+<Button Name="btnRight" Click="Button_Click" Content="Rechts"/>
+```
+
+```csharp
+private void Button_Click(object sender, RoutedEventArgs e)
+{
+    Button b = (Button)sender;
+    b.Content = $"{b.Name} was clicked";
+}
+```
+
+Zo kun je op basis van de `sender` dynamisch bepalen welke knop is aangeklikt.  
+Dit voorkomt dubbele code en maakt de UI logica onderhoudbaar.
+
+---
+
+## 12. Meerdere vensters (Multi-window applicaties)
+
+Tot nu toe werkte elke WPF-app met één hoofdvenster via de `StartupUri` in `App.xaml`:
+
+```xml
+<Application x:Class="MyApp.App"
+             StartupUri="MainWindow.xaml">
+</Application>
+```
+
+Voor complexere toepassingen wil je vaak **meerdere vensters** gebruiken, bijvoorbeeld een inlogscherm en daarna een hoofdscherm.
+
+### Nieuw venster maken
+
+In Visual Studio:  
+`Project → Add → Window → WPF Window`
+
+Voorbeeld:
+
+- `FirstWindow.xaml`
+- `SecondWindow.xaml`
+
+Let erop dat bij **renaming** de naam overal consistent is:
+- bestandsnaam (`FirstWindow.xaml` / `.xaml.cs`)
+- klassenaam in de code-behind
+- verwijzing via `x:Class` in XAML
+- de constructor
+- eventueel `StartupUri` in `App.xaml`
+
+### Een nieuw venster openen
+
+In de `FirstWindow` kun je met een knop het tweede venster openen:
+
+```csharp
+private void OpenOtherWindow_Click(object sender, RoutedEventArgs e)
+{
+    SecondWindow w = new SecondWindow();
+    w.Show();
+    this.Close();
+}
+```
+
+Op die manier wordt het nieuwe venster getoond en het vorige afgesloten.
+
+---
+
+## 13. Application Startup & ShutdownMode
+
+### Application Startup Event
+
+In plaats van een `StartupUri` kun je het **`Startup`-event** van de `App` gebruiken:
+
+```xml
+<Application x:Class="MyApp.App" Startup="Application_Startup">
+</Application>
+```
+
+In `App.xaml.cs`:
+
+```csharp
+private void Application_Startup(object sender, StartupEventArgs e)
+{
+    var window = new FirstWindow();
+    window.Show();
+}
+```
+
+Zo krijg je meer controle bij het opstarten van de applicatie (bijvoorbeeld om instellingen te laden of een databaseverbinding te testen).
+
+### ShutdownMode
+
+WPF-toepassingen sluiten standaard zodra het **laatste venster gesloten** is.  
+Dit gedrag wordt bepaald door de property `Application.ShutdownMode`:
+
+| Waarde | Betekenis |
+|---------|------------|
+| `OnLastWindowClose` | (standaard) Sluit app als laatste venster gesloten is |
+| `OnMainWindowClose` | Sluit alleen als het hoofdvenster sluit |
+| `OnExplicitShutdown` | App blijft draaien tot `Application.Shutdown()` wordt aangeroepen |
+
+**Voorbeeld:**
+```csharp
+Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+```
+
+Gebruik dit enkel als je bewust meerdere vensters of verborgen vensters wilt beheren.  
+
+---
+
+## 14. Vensters verbergen vs sluiten
+
+Wanneer je een venster sluit (`Close()`), wordt het object volledig vernietigd.  
+Alle state (zoals tekst in velden) gaat verloren.
+
+Als je die gegevens wilt behouden, gebruik dan `Hide()` i.p.v. `Close()`.  
+Het venster blijft dan in het geheugen bestaan en kan later weer worden getoond:
+
+```csharp
+this.Hide();
+// later
+this.Show();
+```
+
+Let wel: verborgen vensters tellen nog mee voor `ShutdownMode`.  
+Als je `OnLastWindowClose` gebruikt, zal de applicatie **niet afsluiten** zolang een verborgen venster nog actief is.
+
+Gebruik `Hide()` dus enkel bewust, bijvoorbeeld bij tijdelijk wisselen van scherm.
+
+---
+
+## 15. DispatcherUnhandledException
+
+Wanneer in een WPF-app een **exception** optreedt die nergens wordt opgevangen, crasht de app standaard.  
+Het event `Application.DispatcherUnhandledException` laat je toe dit af te handelen net voor de crash.
+
+### Voorbeeld
+
+```csharp
+private void Application_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+{
+    // Log exception naar bestand
+    File.WriteAllText("CrashLog.txt", e.Exception.ToString());
+
+    MessageBox.Show(
+        $"Er is een fout opgetreden:
+{e.Exception.Message}",
+        "Fout",
+        MessageBoxButton.OK,
+        MessageBoxImage.Error
+    );
+
+    // Laat de app verder crashen (aanbevolen)
+    e.Handled = false;
+}
+```
+
+Wil je absoluut niet crashen (meestal af te raden), kun je `e.Handled = true` zetten, maar dan kan je applicatie in een onvoorspelbare staat blijven draaien.
+
+### Typisch gebruik
+
+- Logging van onverwachte fouten
+- Gebruiker een melding tonen ("Er is iets misgelopen, de applicatie wordt afgesloten")
+- Niet bedoeld ter vervanging van `try-catch` in je eigen code
+
+---
